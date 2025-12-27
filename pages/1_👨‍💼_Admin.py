@@ -588,7 +588,7 @@ with tabs[1]:
     # Build query with filters
     where_clauses = ["g.final_score IS NOT NULL"]
     if search_name:
-        where_clauses.append(f"(LOWER(u.name) LIKE '%{search_name.lower()}%' OR LOWER(u.user_email) LIKE '%{search_name.lower()}%')")
+        where_clauses.append(f"(LOWER(u.name) LIKE '%{search_name.lower()}%' OR LOWER(u.student_email) LIKE '%{search_name.lower()}%')")
     if dept_filter != "All":
         where_clauses.append(f"u.department = '{dept_filter}'")
     
@@ -597,7 +597,7 @@ with tabs[1]:
     df = run_query(f"""
         SELECT 
             u.name as student_name,
-            u.user_email as student_email,
+            u.student_email,
             u.department,
             u.role,
             COUNT(g._id) as total_attempts,
@@ -608,7 +608,7 @@ with tabs[1]:
         FROM `{DATASET_ID}.grades` g
         JOIN `{DATASET_ID}.user` u ON g.user = u.user_id
         WHERE {where_clause}
-        GROUP BY u.user_id, u.name, u.user_email, u.department, u.role
+        GROUP BY u.user_id, u.name, u.student_email, u.department, u.role
         ORDER BY avg_score DESC
     """)
     
