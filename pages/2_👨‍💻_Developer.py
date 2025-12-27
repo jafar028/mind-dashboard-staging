@@ -144,7 +144,7 @@ tabs = st.tabs([
 with tabs[0]:
     st.markdown("## 📊 Developer Overview")
     
-    # System health metrics
+    # System health metrics - Row 1
     col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
@@ -208,6 +208,59 @@ with tabs[0]:
     
     st.markdown("---")
     
+    # Performance metrics - Row 2
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        df = run_query(f"""
+            SELECT ROUND(APPROX_QUANTILES(derived_response_time_ms, 100)[OFFSET(95)], 2) as p95
+            FROM `{DATASET_ID}.backend_telemetry`
+            WHERE created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
+                AND derived_response_time_ms IS NOT NULL
+        """)
+        if df is not None and not df.empty:
+            st.metric("P95 Latency", f"{df['p95'].iloc[0]:.0f}ms", 
+                     delta="Target: <2000ms", delta_color="inverse")
+        else:
+            st.metric("P95 Latency", "N/A")
+    
+    with col2:
+        df = run_query(f"""
+            SELECT COUNT(DISTINCT trace_id) as traces
+            FROM `{DATASET_ID}.backend_telemetry`
+            WHERE created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
+                AND trace_id IS NOT NULL
+        """)
+        if df is not None and not df.empty:
+            st.metric("Unique Traces", f"{df['traces'].iloc[0]:,}")
+        else:
+            st.metric("Unique Traces", "N/A")
+    
+    with col3:
+        df = run_query(f"""
+            SELECT COUNT(DISTINCT service_name) as services
+            FROM `{DATASET_ID}.backend_telemetry`
+            WHERE service_name IS NOT NULL
+        """)
+        if df is not None and not df.empty:
+            st.metric("Active Services", f"{df['services'].iloc[0]}")
+        else:
+            st.metric("Active Services", "N/A")
+    
+    with col4:
+        df = run_query(f"""
+            SELECT COUNTIF(derived_is_error = TRUE) as errors
+            FROM `{DATASET_ID}.backend_telemetry`
+            WHERE created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
+        """)
+        if df is not None and not df.empty:
+            st.metric("Total Errors", f"{df['errors'].iloc[0]:,}", 
+                     delta="0 is ideal", delta_color="inverse")
+        else:
+            st.metric("Total Errors", "N/A")
+    
+    st.markdown("---")
+    
     # Charts
     col1, col2 = st.columns(2)
     
@@ -255,6 +308,168 @@ with tabs[0]:
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("No latency data available")
+    
+    st.markdown("---")
+    
+    # Error and success rate trends
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 🐛 Error Rate Trend")
+        df = run_query(f"""
+            SELECT 
+                TIMESTAMP_TRUNC(created_at, HOUR) as hour,
+                COUNTIF(derived_is_error = TRUE) as errors,
+                COUNT(*) as total,
+                ROUND(COUNTIF(derived_is_error = TRUE) / COUNT(*) * 100, 2) as error_rate
+            FROM `{DATASET_ID}.backend_telemetry`
+            WHERE created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
+            GROUP BY hour
+            ORDER BY hour
+        """)
+        if df is not None and not df.empty:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=df['hour'],
+                y=df['error_rate'],
+                mode='lines+markers',
+                name='Error Rate %',
+                line=dict(color='#e74c3c', width=2),
+                fill='tozeroy',
+                fillcolor='rgba(231, 76, 60, 0.2)'
+            ))
+            fig.update_layout(
+                title='Hourly Error Rate %',
+                xaxis_title='Time',
+                yaxis_title='Error Rate (%)',
+                template='plotly_dark',
+                plot_bgcolor='#262730',
+                paper_bgcolor='#0E1117',
+                font=dict(color='#FAFAFA'),
+                height=350,
+                hovermode='x unified'
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No error data available")
+    
+    with col2:
+        st.markdown("### 📊 Request Status Codes")
+        df = run_query(f"""
+            SELECT 
+                http_status_code,
+                COUNT(*) as count
+            FROM `{DATASET_ID}.backend_telemetry`
+            WHERE created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
+                AND http_status_code IS NOT NULL
+            GROUP BY http_status_code
+            ORDER BY count DESC
+            LIMIT 10
+        """)
+        if df is not None and not df.empty:
+            fig = go.Figure(go.Bar(
+                x=df['count'],
+                y=df['http_status_code'].astype(str),
+                orientation='h',
+                marker=dict(
+                    color=df['count'],
+                    colorscale='Blues',
+                    showscale=False
+                ),
+                text=df['count'],
+                textposition='outside'
+            ))
+            fig.update_layout(
+                title='Top HTTP Status Codes',
+                xaxis_title='Count',
+                yaxis_title='Status Code',
+                template='plotly_dark',
+                plot_bgcolor='#262730',
+                paper_bgcolor='#0E1117',
+                font=dict(color='#FAFAFA'),
+                height=350,
+                yaxis={'categoryorder': 'total ascending'}
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No status code data available")
+    
+    st.markdown("---")
+    
+    # Database & Session Analytics
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 💾 Active User Sessions")
+        df = run_query(f"""
+            SELECT 
+                DATE(start_timestamp) as date,
+                COUNT(DISTINCT distinct_id) as unique_users,
+                COUNT(*) as total_sessions,
+                ROUND(AVG(session_duration_seconds / 60), 2) as avg_duration_min
+            FROM `{DATASET_ID}.session_analytics`
+            WHERE start_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+            GROUP BY date
+            ORDER BY date
+        """)
+        if df is not None and not df.empty:
+            fig = create_multi_line_chart(
+                df, 'date', 
+                ['unique_users', 'total_sessions'], 
+                'Daily Session Metrics',
+                height=350
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No session data available")
+    
+    with col2:
+        st.markdown("### 📝 Grade Submissions Trend")
+        df = run_query(f"""
+            SELECT 
+                DATE(timestamp) as date,
+                COUNT(*) as submissions,
+                ROUND(AVG(final_score), 2) as avg_score
+            FROM `{DATASET_ID}.grades`
+            WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+            GROUP BY date
+            ORDER BY date
+        """)
+        if df is not None and not df.empty:
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                x=df['date'],
+                y=df['submissions'],
+                name='Submissions',
+                marker=dict(color='#3498db')
+            ))
+            fig.add_trace(go.Scatter(
+                x=df['date'],
+                y=df['avg_score'],
+                name='Avg Score',
+                yaxis='y2',
+                mode='lines+markers',
+                line=dict(color='#2ecc71', width=3)
+            ))
+            fig.update_layout(
+                title='Daily Grade Submissions & Average Scores',
+                xaxis_title='Date',
+                yaxis_title='Submissions',
+                yaxis2=dict(
+                    title='Average Score',
+                    overlaying='y',
+                    side='right'
+                ),
+                template='plotly_dark',
+                plot_bgcolor='#262730',
+                paper_bgcolor='#0E1117',
+                font=dict(color='#FAFAFA'),
+                height=350,
+                hovermode='x unified'
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No grade data available")
 
 # TAB 2: AI PERFORMANCE
 with tabs[1]:
