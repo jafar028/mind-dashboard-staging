@@ -97,6 +97,10 @@ def plot_pie_chart(df, values, names, title, height=400):
     return fig
 
 def plot_gauge(value, title, max_value=100, height=300):
+    """Create a gauge chart with visible indicator needle"""
+    if value is None or pd.isna(value):
+        value = 0
+    
     if value >= 80:
         color = '#2ECC71'
     elif value >= 60:
@@ -106,22 +110,38 @@ def plot_gauge(value, title, max_value=100, height=300):
     
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
-        value=value,
+        value=float(value),
         domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': title, 'font': {'size': 16}},
+        title={'text': title, 'font': {'size': 16, 'color': '#FAFAFA'}},
+        number={'font': {'size': 40, 'color': '#FAFAFA'}},
         gauge={
-            'axis': {'range': [None, max_value]},
-            'bar': {'color': color},
-            'bgcolor': '#262730',
+            'axis': {'range': [0, max_value], 'tickwidth': 1, 'tickcolor': '#FAFAFA'},
+            'bar': {'color': color, 'thickness': 0.75},
+            'bgcolor': '#1E1E1E',
+            'borderwidth': 2,
+            'bordercolor': '#FAFAFA',
             'steps': [
-                {'range': [0, 60], 'color': 'rgba(231, 76, 60, 0.2)'},
-                {'range': [60, 80], 'color': 'rgba(243, 156, 18, 0.2)'},
-                {'range': [80, max_value], 'color': 'rgba(46, 204, 113, 0.2)'}
-            ]
+                {'range': [0, 60], 'color': 'rgba(231, 76, 60, 0.3)'},
+                {'range': [60, 80], 'color': 'rgba(243, 156, 18, 0.3)'},
+                {'range': [80, max_value], 'color': 'rgba(46, 204, 113, 0.3)'}
+            ],
+            'threshold': {
+                'line': {'color': color, 'width': 4},
+                'thickness': 0.75,
+                'value': float(value)
+            }
         }
     ))
-    fig.update_layout(template='plotly_dark', plot_bgcolor='#262730', paper_bgcolor='#0E1117', 
-                     font=dict(color='#FAFAFA'), height=height)
+    
+    fig.update_layout(
+        template='plotly_dark', 
+        plot_bgcolor='#262730', 
+        paper_bgcolor='#0E1117', 
+        font=dict(color='#FAFAFA'), 
+        height=height,
+        margin=dict(l=20, r=20, t=50, b=20)
+    )
+    
     return fig
 
 def create_multi_line_chart(df, x, y_columns, title, height=400):
