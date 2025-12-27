@@ -356,28 +356,54 @@ with tabs[0]:
             st.info("No student data available")
     
     with col2:
-        st.markdown("### 📚 Case Study Performance")
+        st.markdown("### ⚠️ Students Needing Support")
         df = run_query(f"""
             SELECT 
-                c.title as case_study,
-                COUNT(g._id) as attempts,
+                u.name as student_name,
+                u.department,
                 ROUND(AVG(g.final_score), 2) as avg_score,
-                ROUND(MIN(g.final_score), 2) as min_score,
-                ROUND(MAX(g.final_score), 2) as max_score
+                COUNT(g._id) as attempts,
+                MAX(g.timestamp) as last_activity
             FROM `{DATASET_ID}.grades` g
-            JOIN `{DATASET_ID}.casestudy` c ON g.case_study = c.case_study_id
             JOIN `{DATASET_ID}.user` u ON g.user = u.user_id
             WHERE g.final_score IS NOT NULL {dept_where}
-            GROUP BY c.case_study_id, c.title
-            ORDER BY avg_score DESC
+            GROUP BY u.user_id, u.name, u.department
+            HAVING avg_score < {risk_threshold}
+            ORDER BY avg_score ASC
+            LIMIT 10
         """)
         if df is not None and not df.empty:
             st.dataframe(df, use_container_width=True, height=350)
             
             csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download CSV", csv, "case_study_performance.csv", "text/csv")
+            st.download_button("📥 Download CSV", csv, "at_risk_preview.csv", "text/csv")
+            st.warning(f"**{len(df)}** students shown - See 'At-Risk Students' tab for full list")
         else:
-            st.info("No case study data available")
+            st.success(f"✅ No students below {risk_threshold}% threshold!")
+    
+    st.markdown("---")
+    
+    # Department Performance Summary
+    if selected_dept == 'All':
+        st.markdown("### 🏢 Department Performance Summary")
+        df = run_query(f"""
+            SELECT 
+                u.department,
+                COUNT(DISTINCT u.user_id) as students,
+                COUNT(g._id) as total_submissions,
+                ROUND(AVG(g.final_score), 2) as avg_score,
+                COUNTIF(g.final_score >= 80) / COUNT(*) * 100 as pct_above_80
+            FROM `{DATASET_ID}.grades` g
+            JOIN `{DATASET_ID}.user` u ON g.user = u.user_id
+            WHERE g.final_score IS NOT NULL
+            GROUP BY u.department
+            ORDER BY avg_score DESC
+        """)
+        if df is not None and not df.empty:
+            df['pct_above_80'] = df['pct_above_80'].round(1)
+            st.dataframe(df, use_container_width=True, height=300)
+        else:
+            st.info("No department data available")
 
 # TAB 2: STUDENT PERFORMANCE
 with tabs[1]:
@@ -690,19 +716,31 @@ with tabs[5]:
                     hovertemplate='<b>%{text}</b><br>Score: %{y:.1f}%<br>Date: %{x}<extra></extra>'
                 ))
                 
-                # Add trend line
-                from scipy import stats
-                x_numeric = list(range(len(df)))
-                slope, intercept, r_value, p_value, std_err = stats.linregress(x_numeric, df['final_score'])
-                trend_line = [slope * x + intercept for x in x_numeric]
-                
-                fig.add_trace(go.Scatter(
-                    x=df['timestamp'],
-                    y=trend_line,
-                    mode='lines',
-                    name='Trend',
-                    line=dict(color='#2ecc71', width=2, dash='dash')
-                ))
+                # Add trend line if scipy is available
+                try:
+                    from scipy import stats
+                    x_numeric = list(range(len(df)))
+                    slope, intercept, r_value, p_value, std_err = stats.linregress(x_numeric, df['final_score'])
+                    trend_line = [slope * x + intercept for x in x_numeric]
+                    
+                    fig.add_trace(go.Scatter(
+                        x=df['timestamp'],
+                        y=trend_line,
+                        mode='lines',
+                        name='Trend',
+                        line=dict(color='#2ecc71', width=2, dash='dash')
+                    ))
+                except ImportError:
+                    # Scipy not available - show simple moving average instead
+                    if len(df) >= 3:
+                        df['ma'] = df['final_score'].rolling(window=3, center=True).mean()
+                        fig.add_trace(go.Scatter(
+                            x=df['timestamp'],
+                            y=df['ma'],
+                            mode='lines',
+                            name='Moving Avg',
+                            line=dict(color='#2ecc71', width=2, dash='dash')
+                        ))
                 
                 fig.update_layout(
                     title=f'{selected_student} - Score Progression',
