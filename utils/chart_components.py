@@ -374,14 +374,19 @@ def export_dataframe_to_csv(df: pd.DataFrame, filename: str):
 
 def export_dataframe_to_excel(df: pd.DataFrame, filename: str):
     """Provide Excel download button for DataFrame"""
-    import io
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Data')
-    
-    st.download_button(
-        label="📥 Download Excel",
-        data=buffer.getvalue(),
-        file_name=filename,
-        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    )
+    try:
+        import io
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Data')
+        
+        st.download_button(
+            label="📥 Download Excel",
+            data=buffer.getvalue(),
+            file_name=filename,
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+    except ImportError:
+        st.warning("Excel export requires openpyxl package. Use CSV export instead.")
+    except Exception as e:
+        st.error(f"Excel export failed: {str(e)}")
