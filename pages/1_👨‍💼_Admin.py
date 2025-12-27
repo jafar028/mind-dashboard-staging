@@ -469,86 +469,156 @@ with tabs[0]:
 with tabs[1]:
     st.markdown("## 👥 User Analytics")
     
+    # User stats
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        df = run_query(f"SELECT COUNT(*) as count FROM `{DATASET_ID}.user`")
+        if df is not None and not df.empty:
+            st.metric("Total Users", f"{df['count'].iloc[0]:,}")
+        else:
+            st.metric("Total Users", "N/A")
+    
+    with col2:
+        df = run_query(f"""
+            SELECT COUNT(DISTINCT role) as roles 
+            FROM `{DATASET_ID}.user` 
+            WHERE role IS NOT NULL
+        """)
+        if df is not None and not df.empty:
+            st.metric("User Roles", f"{df['roles'].iloc[0]}")
+        else:
+            st.metric("User Roles", "N/A")
+    
+    with col3:
+        df = run_query(f"""
+            SELECT COUNT(DISTINCT department) as depts 
+            FROM `{DATASET_ID}.user` 
+            WHERE department IS NOT NULL
+        """)
+        if df is not None and not df.empty:
+            st.metric("Departments", f"{df['depts'].iloc[0]}")
+        else:
+            st.metric("Departments", "N/A")
+    
+    with col4:
+        df = run_query(f"""
+            SELECT COUNT(DISTINCT u.user_id) as active_students
+            FROM `{DATASET_ID}.user` u
+            JOIN `{DATASET_ID}.grades` g ON u.user_id = g.user
+            WHERE g.timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+        """)
+        if df is not None and not df.empty:
+            st.metric("Active Students (30d)", f"{df['active_students'].iloc[0]:,}")
+        else:
+            st.metric("Active Students (30d)", "N/A")
+    
+    st.markdown("---")
+    
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("### 📊 Performance by Cohort")
-        # FIXED: Join properly using 'user' column from grades
-        df = run_query(f"""
-            SELECT 
-                u.cohort,
-                COUNT(DISTINCT u.user_id) as total_students,
-                ROUND(AVG(g.final_score), 2) as avg_score,
-                ROUND(AVG(g.communication), 2) as avg_communication
-            FROM `{DATASET_ID}.user` u
-            LEFT JOIN `{DATASET_ID}.grades` g ON u.user_id = g.user
-            WHERE u.cohort IS NOT NULL
-            GROUP BY u.cohort
-            ORDER BY u.cohort
-        """)
-        if df is not None and not df.empty:
-            st.dataframe(df, use_container_width=True, height=300)
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download CSV", csv, "cohort_performance.csv", "text/csv")
-        else:
-            st.info("No cohort data available")
-    
-    with col2:
         st.markdown("### 📊 Performance by Department")
         df = run_query(f"""
             SELECT 
                 u.department,
-                COUNT(DISTINCT u.user_id) as total_students,
+                COUNT(DISTINCT u.user_id) as student_count,
+                COUNT(g._id) as total_attempts,
                 ROUND(AVG(g.final_score), 2) as avg_score,
-                ROUND(AVG(g.comprehension), 2) as avg_comprehension
-            FROM `{DATASET_ID}.user` u
-            LEFT JOIN `{DATASET_ID}.grades` g ON u.user_id = g.user
-            WHERE u.department IS NOT NULL
+                ROUND(MIN(g.final_score), 2) as min_score,
+                ROUND(MAX(g.final_score), 2) as max_score
+            FROM `{DATASET_ID}.grades` g
+            JOIN `{DATASET_ID}.user` u ON g.user = u.user_id
+            WHERE u.department IS NOT NULL AND g.final_score IS NOT NULL
             GROUP BY u.department
-            ORDER BY u.department
+            ORDER BY avg_score DESC
         """)
         if df is not None and not df.empty:
             st.dataframe(df, use_container_width=True, height=300)
+            
+            fig = plot_bar_chart(df, 'department', 'avg_score', 
+                               'Average Score by Department', height=300)
+            st.plotly_chart(fig, use_container_width=True)
+            
             csv = df.to_csv(index=False).encode('utf-8')
             st.download_button("📥 Download CSV", csv, "department_performance.csv", "text/csv")
         else:
             st.info("No department data available")
     
+    with col2:
+        st.markdown("### 📊 Performance by Role")
+        df = run_query(f"""
+            SELECT 
+                u.role,
+                COUNT(DISTINCT u.user_id) as user_count,
+                COUNT(g._id) as total_attempts,
+                ROUND(AVG(g.final_score), 2) as avg_score,
+                ROUND(MIN(g.final_score), 2) as min_score,
+                ROUND(MAX(g.final_score), 2) as max_score
+            FROM `{DATASET_ID}.grades` g
+            JOIN `{DATASET_ID}.user` u ON g.user = u.user_id
+            WHERE u.role IS NOT NULL AND g.final_score IS NOT NULL
+            GROUP BY u.role
+            ORDER BY avg_score DESC
+        """)
+        if df is not None and not df.empty:
+            st.dataframe(df, use_container_width=True, height=300)
+            
+            fig = plot_bar_chart(df, 'role', 'avg_score', 
+                               'Average Score by Role', height=300)
+            st.plotly_chart(fig, use_container_width=True)
+            
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button("📥 Download CSV", csv, "role_performance.csv", "text/csv")
+        else:
+            st.info("No role data available")
+    
     st.markdown("---")
     st.markdown("### 📋 All Student Performance")
+    
+    # Search and filters
+    col1, col2 = st.columns(2)
+    with col1:
+        search_name = st.text_input("🔍 Search by Name or Email", "")
+    with col2:
+        dept_filter = st.selectbox("Filter by Department", ["All"] + [
+            dept for dept in run_query(f"SELECT DISTINCT department FROM `{DATASET_ID}.user` WHERE department IS NOT NULL ORDER BY department")['department'].tolist()
+        ] if run_query(f"SELECT DISTINCT department FROM `{DATASET_ID}.user` WHERE department IS NOT NULL") is not None else ["All"])
+    
+    # Build query with filters
+    where_clauses = ["g.final_score IS NOT NULL"]
+    if search_name:
+        where_clauses.append(f"(LOWER(u.name) LIKE '%{search_name.lower()}%' OR LOWER(u.student_email) LIKE '%{search_name.lower()}%')")
+    if dept_filter != "All":
+        where_clauses.append(f"u.department = '{dept_filter}'")
+    
+    where_clause = " AND ".join(where_clauses)
     
     df = run_query(f"""
         SELECT 
             u.name as student_name,
             u.student_email,
             u.department,
-            u.cohort,
-            COUNT(DISTINCT g.conversation_id) as attempts,
+            u.role,
+            COUNT(g._id) as total_attempts,
             ROUND(AVG(g.final_score), 2) as avg_score,
-            ROUND(AVG(g.communication), 2) as avg_communication,
-            ROUND(AVG(g.comprehension), 2) as avg_comprehension,
-            ROUND(AVG(g.critical_thinking), 2) as avg_critical_thinking
+            ROUND(MIN(g.final_score), 2) as min_score,
+            ROUND(MAX(g.final_score), 2) as max_score,
+            MAX(g.timestamp) as last_attempt
         FROM `{DATASET_ID}.grades` g
         JOIN `{DATASET_ID}.user` u ON g.user = u.user_id
-        WHERE g.final_score IS NOT NULL
-        GROUP BY u.name, u.student_email, u.department, u.cohort
+        WHERE {where_clause}
+        GROUP BY u.user_id, u.name, u.student_email, u.department, u.role
         ORDER BY avg_score DESC
     """)
     
     if df is not None and not df.empty:
-        search = st.text_input("🔍 Search students", placeholder="Enter name or email")
+        st.dataframe(df, use_container_width=True, height=400)
         
-        if search:
-            filtered_df = df[
-                df['student_name'].str.contains(search, case=False, na=False) |
-                df['student_email'].str.contains(search, case=False, na=False)
-            ]
-        else:
-            filtered_df = df
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Download Full Report", csv, "student_performance.csv", "text/csv")
         
-        st.dataframe(filtered_df, use_container_width=True, height=400)
-        csv = filtered_df.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download CSV", csv, "student_performance.csv", "text/csv")
+        st.info(f"**{len(df)} students** found")
     else:
         st.info("No student performance data available")
 
@@ -562,22 +632,22 @@ with tabs[2]:
     df = run_query(f"""
         SELECT 
             ROUND(AVG(final_score), 2) as avg_grade,
-            ROUND(AVG(communication), 2) as avg_communication,
-            ROUND(AVG(comprehension), 2) as avg_comprehension,
-            ROUND(AVG(critical_thinking), 2) as avg_critical_thinking
+            ROUND(MIN(final_score), 2) as min_grade,
+            ROUND(MAX(final_score), 2) as max_grade,
+            COUNT(*) as total_grades
         FROM `{DATASET_ID}.grades`
         WHERE final_score IS NOT NULL
     """)
     
     if df is not None and not df.empty:
         with col1:
-            st.metric("Avg Communication", f"{df['avg_communication'].iloc[0]:.1f}%")
+            st.metric("Average Score", f"{df['avg_grade'].iloc[0]:.1f}%")
         with col2:
-            st.metric("Avg Comprehension", f"{df['avg_comprehension'].iloc[0]:.1f}%")
+            st.metric("Minimum Score", f"{df['min_grade'].iloc[0]:.1f}%")
         with col3:
-            st.metric("Avg Critical Thinking", f"{df['avg_critical_thinking'].iloc[0]:.1f}%")
+            st.metric("Maximum Score", f"{df['max_grade'].iloc[0]:.1f}%")
         with col4:
-            st.metric("Overall Average", f"{df['avg_grade'].iloc[0]:.1f}%")
+            st.metric("Total Grades", f"{df['total_grades'].iloc[0]:,}")
     
     st.markdown("---")
     
