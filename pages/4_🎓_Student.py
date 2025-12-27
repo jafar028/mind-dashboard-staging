@@ -205,14 +205,14 @@ with tabs[0]:
             WHERE user = '{student_user_id}'
         )
         SELECT 
-            ROUND(COUNTIF(s.avg_score < m.my_score) / COUNT(*) * 100, 0) as percentile
+            ROUND(SAFE_DIVIDE(COUNTIF(s.avg_score < m.my_score), COUNT(*)) * 100, 0) as percentile
         FROM student_avgs s, my_avg m
     """)
     
     # KPIs Row 1
     col1, col2, col3, col4, col5 = st.columns(5)
     
-    if my_stats is not None and not my_stats.empty:
+    if my_stats is not None and not my_stats.empty and pd.notna(my_stats['avg_score'].iloc[0]):
         stats = my_stats.iloc[0]
         
         with col1:
@@ -222,16 +222,19 @@ with tabs[0]:
             st.metric("Total Attempts", f"{int(stats['total_attempts'])}")
         
         with col3:
-            if class_avg is not None and not class_avg.empty:
+            if class_avg is not None and not class_avg.empty and pd.notna(class_avg['class_avg'].iloc[0]):
                 class_score = class_avg['class_avg'].iloc[0]
                 delta = stats['avg_score'] - class_score
-                st.metric("vs Class Avg", f"{delta:+.1f}%", 
-                         delta=f"{delta:+.1f}%" if delta != 0 else "On par")
+                if pd.notna(delta):
+                    st.metric("vs Class Avg", f"{delta:+.1f}%", 
+                             delta=f"{delta:+.1f}%" if abs(delta) > 0.1 else "On par")
+                else:
+                    st.metric("vs Class Avg", "N/A")
             else:
                 st.metric("vs Class Avg", "N/A")
         
         with col4:
-            if my_rank is not None and not my_rank.empty:
+            if my_rank is not None and not my_rank.empty and pd.notna(my_rank['percentile'].iloc[0]):
                 percentile = my_rank['percentile'].iloc[0]
                 st.metric("Class Rank", f"Top {100-percentile:.0f}%")
             else:
@@ -239,6 +242,18 @@ with tabs[0]:
         
         with col5:
             st.metric("Cases Attempted", f"{int(stats['cases_attempted'])}")
+    else:
+        # No data available
+        with col1:
+            st.metric("My Average", "N/A")
+        with col2:
+            st.metric("Total Attempts", "0")
+        with col3:
+            st.metric("vs Class Avg", "N/A")
+        with col4:
+            st.metric("Class Rank", "N/A")
+        with col5:
+            st.metric("Cases Attempted", "0")
     
     st.markdown("---")
     
@@ -247,7 +262,8 @@ with tabs[0]:
     
     with col1:
         st.markdown("### 🎯 My Performance Score")
-        if my_stats is not None and not my_stats.empty:
+        if my_stats is not None and not my_stats.empty and pd.notna(my_stats['avg_score'].iloc[0]):
+            stats = my_stats.iloc[0]
             fig = plot_gauge(stats['avg_score'], "Current Average", max_value=100, height=300)
             st.plotly_chart(fig, use_container_width=True)
             
@@ -263,7 +279,14 @@ with tabs[0]:
             else:
                 st.error("🆘 **Needs urgent attention.** Reach out for help!")
         else:
-            st.info("Complete your first case study to see your performance!")
+            st.info("🎯 **Complete your first case study to see your performance!**")
+            st.markdown("""
+            **Get started:**
+            1. Choose a case study
+            2. Complete the assignment
+            3. Submit for grading
+            4. Track your progress here!
+            """)
     
     with col2:
         st.markdown("### 📈 Score Progression")
@@ -591,7 +614,7 @@ with tabs[3]:
 with tabs[4]:
     st.markdown("## 🏆 My Achievements & Milestones")
     
-    if my_stats is not None and not my_stats.empty:
+    if my_stats is not None and not my_stats.empty and pd.notna(my_stats['avg_score'].iloc[0]):
         stats = my_stats.iloc[0]
         
         # Achievement calculations
@@ -602,7 +625,7 @@ with tabs[4]:
             achievements.append({"badge": "🌟", "title": "Excellence", "desc": "Average score ≥90%"})
         if stats['avg_score'] >= 80:
             achievements.append({"badge": "⭐", "title": "High Performer", "desc": "Average score ≥80%"})
-        if stats['max_score'] == 100:
+        if pd.notna(stats['max_score']) and stats['max_score'] == 100:
             achievements.append({"badge": "💯", "title": "Perfect Score", "desc": "Achieved 100%"})
         
         # Attempt-based achievements
@@ -619,6 +642,7 @@ with tabs[4]:
         
         # Display achievements
         if achievements:
+            st.markdown("### 🏅 My Badges")
             cols = st.columns(min(len(achievements), 4))
             for idx, achievement in enumerate(achievements):
                 with cols[idx % 4]:
@@ -626,7 +650,7 @@ with tabs[4]:
                     st.markdown(f"**{achievement['title']}**")
                     st.caption(achievement['desc'])
         else:
-            st.info("Keep learning to unlock achievements!")
+            st.info("💡 Keep learning to unlock achievements!")
         
         st.markdown("---")
         
@@ -639,11 +663,11 @@ with tabs[4]:
             st.markdown("**Score Goals**")
             if stats['avg_score'] < 80:
                 progress = (stats['avg_score'] / 80) * 100
-                st.progress(progress / 100)
+                st.progress(min(progress / 100, 1.0))
                 st.caption(f"{progress:.0f}% to 80% average (⭐ High Performer)")
             elif stats['avg_score'] < 90:
                 progress = ((stats['avg_score'] - 80) / 10) * 100
-                st.progress(progress / 100)
+                st.progress(min(progress / 100, 1.0))
                 st.caption(f"{progress:.0f}% to 90% average (🌟 Excellence)")
             else:
                 st.success("✅ All score milestones achieved!")
@@ -652,20 +676,36 @@ with tabs[4]:
             st.markdown("**Activity Goals**")
             if stats['total_attempts'] < 10:
                 progress = (stats['total_attempts'] / 10) * 100
-                st.progress(progress / 100)
+                st.progress(min(progress / 100, 1.0))
                 st.caption(f"{progress:.0f}% to 10 submissions (🎯 Getting Started)")
             elif stats['total_attempts'] < 25:
                 progress = ((stats['total_attempts'] - 10) / 15) * 100
-                st.progress(progress / 100)
+                st.progress(min(progress / 100, 1.0))
                 st.caption(f"{progress:.0f}% to 25 submissions (📚 Active Student)")
             elif stats['total_attempts'] < 50:
                 progress = ((stats['total_attempts'] - 25) / 25) * 100
-                st.progress(progress / 100)
+                st.progress(min(progress / 100, 1.0))
                 st.caption(f"{progress:.0f}% to 50 submissions (🔥 Dedicated Learner)")
             else:
                 st.success("✅ All activity milestones achieved!")
     else:
-        st.info("Complete case studies to earn achievements!")
+        st.info("🎯 **Start your learning journey to earn achievements!**")
+        st.markdown("""
+        ### Available Achievements:
+        
+        **Score-Based:**
+        - 🌟 Excellence (≥90% average)
+        - ⭐ High Performer (≥80% average)
+        - 💯 Perfect Score (100% on any assignment)
+        
+        **Activity-Based:**
+        - 🎯 Getting Started (10+ submissions)
+        - 📚 Active Student (25+ submissions)
+        - 🔥 Dedicated Learner (50+ submissions)
+        - 🗂️ Explorer (5+ different cases)
+        
+        **Complete your first case study to start earning badges!**
+        """)
 
 # TAB 6: STUDY PLAN
 with tabs[5]:
