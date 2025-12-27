@@ -583,6 +583,96 @@ with tabs[2]:
     
     st.markdown("---")
     
+    # NEW CHART: Institutional Performance Score Ranges
+    st.markdown("### 📊 Institutional Performance: Effective Score Ranges")
+    df = run_query(f"""
+        SELECT 
+            c.title, 
+            MIN(CASE WHEN g.final_score > 0 THEN g.final_score END) as min_score,
+            AVG(g.final_score) as avg_score,
+            MAX(g.final_score) as max_score
+        FROM `{DATASET_ID}.grades` g
+        JOIN `{DATASET_ID}.casestudy` c ON g.case_study = c.case_study_id
+        GROUP BY 1
+        HAVING min_score IS NOT NULL
+        ORDER BY avg_score DESC
+    """)
+    
+    if df is not None and not df.empty:
+        # Create grouped bar chart with Min, Avg, Max
+        fig = go.Figure()
+        
+        # Add bars for each metric
+        fig.add_trace(go.Bar(
+            name='Min (Non-Zero)',
+            x=df['min_score'],
+            y=df['title'],
+            orientation='h',
+            marker=dict(color='#e67e22'),
+            text=df['min_score'].apply(lambda x: f"{x:.1f}%"),
+            textposition='outside',
+            textfont=dict(size=10)
+        ))
+        
+        fig.add_trace(go.Bar(
+            name='Average',
+            x=df['avg_score'],
+            y=df['title'],
+            orientation='h',
+            marker=dict(color='#3498db'),
+            text=df['avg_score'].apply(lambda x: f"{x:.1f}%"),
+            textposition='outside',
+            textfont=dict(size=10)
+        ))
+        
+        fig.add_trace(go.Bar(
+            name='Maximum',
+            x=df['max_score'],
+            y=df['title'],
+            orientation='h',
+            marker=dict(color='#2ecc71'),
+            text=df['max_score'].apply(lambda x: f"{x:.1f}%"),
+            textposition='outside',
+            textfont=dict(size=10)
+        ))
+        
+        fig.update_layout(
+            title='Institutional Performance: Effective Score Ranges',
+            xaxis_title='Score (%)',
+            yaxis_title='Case Study',
+            barmode='group',
+            template='plotly_dark',
+            plot_bgcolor='#262730',
+            paper_bgcolor='#0E1117',
+            font=dict(color='#FAFAFA'),
+            height=max(400, len(df) * 50),  # Dynamic height based on number of case studies
+            xaxis=dict(range=[0, 115]),
+            yaxis={'categoryorder': 'total ascending'},
+            legend=dict(
+                title='Score Metric',
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        st.caption("""
+        **Chart Explanation:**
+        - 🟠 **Min (Non-Zero)**: Lowest passing score achieved
+        - 🔵 **Average**: Mean score across all attempts
+        - 🟢 **Maximum**: Highest score achieved
+        
+        This visualization helps identify performance ranges and outliers across case studies.
+        """)
+    else:
+        st.info("No score data available")
+    
+    st.markdown("---")
+    
     col1, col2 = st.columns(2)
     
     with col1:
