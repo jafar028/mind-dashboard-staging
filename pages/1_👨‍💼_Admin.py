@@ -748,15 +748,15 @@ with tabs[2]:
         df = run_query(f"""
             SELECT 
                 u.name as student_name,
-                u.student_email,
                 u.department,
-                u.cohort,
+                u.role,
                 ROUND(AVG(g.final_score), 2) as avg_score,
-                COUNT(*) as attempts
+                COUNT(g._id) as attempts,
+                MAX(g.timestamp) as last_attempt
             FROM `{DATASET_ID}.grades` g
             JOIN `{DATASET_ID}.user` u ON g.user = u.user_id
             WHERE g.final_score IS NOT NULL
-            GROUP BY u.user_id, u.name, u.student_email, u.department, u.cohort
+            GROUP BY u.user_id, u.name, u.department, u.role
             HAVING avg_score < 60
             ORDER BY avg_score ASC
         """)
@@ -773,13 +773,15 @@ with tabs[2]:
         df = run_query(f"""
             SELECT 
                 u.name as student_name,
-                u.student_email,
+                u.department,
+                u.role,
                 ROUND(AVG(g.final_score), 2) as avg_score,
-                COUNT(*) as attempts
+                COUNT(g._id) as attempts,
+                MAX(g.timestamp) as last_attempt
             FROM `{DATASET_ID}.grades` g
             JOIN `{DATASET_ID}.user` u ON g.user = u.user_id
             WHERE g.final_score IS NOT NULL
-            GROUP BY u.user_id, u.name, u.student_email
+            GROUP BY u.user_id, u.name, u.department, u.role
             ORDER BY avg_score DESC
             LIMIT 10
         """)
