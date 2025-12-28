@@ -698,7 +698,7 @@ with tabs[1]:
     # Search and filters
     col1, col2 = st.columns(2)
     with col1:
-        search_name = st.text_input("🔍 Search by Name or Email", "")
+        search_name = st.text_input("🔍 Search by Name", "")
     with col2:
         dept_filter = st.selectbox("Filter by Department", ["All"] + [
             dept for dept in run_query(f"SELECT DISTINCT department FROM `{DATASET_ID}.user` WHERE department IS NOT NULL ORDER BY department")['department'].tolist()
@@ -707,7 +707,8 @@ with tabs[1]:
     # Build query with filters
     where_clauses = ["g.final_score IS NOT NULL"]
     if search_name:
-        where_clauses.append(f"(LOWER(u.name) LIKE '%{search_name.lower()}%' OR LOWER(u.student_email) LIKE '%{search_name.lower()}%')")
+        # Note: Using just 'name' without student_email due to schema inconsistencies
+        where_clauses.append(f"LOWER(u.name) LIKE '%{search_name.lower()}%'")
     if dept_filter != "All":
         where_clauses.append(f"u.department = '{dept_filter}'")
     
@@ -716,7 +717,6 @@ with tabs[1]:
     df = run_query(f"""
         SELECT 
             u.name as student_name,
-            u.student_email,
             u.department,
             u.role,
             COUNT(g._id) as total_attempts,
@@ -727,7 +727,7 @@ with tabs[1]:
         FROM `{DATASET_ID}.grades` g
         JOIN `{DATASET_ID}.user` u ON g.user = u.user_id
         WHERE {where_clause}
-        GROUP BY u.user_id, u.name, u.student_email, u.department, u.role
+        GROUP BY u.user_id, u.name, u.department, u.role
         ORDER BY avg_score DESC
     """)
     
