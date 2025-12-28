@@ -42,8 +42,10 @@ show_user_info_sidebar()
 
 # Display logo if available
 try:
-    from utils.logo_handler import display_logo
-    display_logo("sidebar", width=180)
+    # Direct path to logo (confirmed from diagnostics)
+    LOGO_PATH = "/mount/src/mind-platform/assets/miva_logo_dark.png"
+    if os.path.exists(LOGO_PATH):
+        st.sidebar.image(LOGO_PATH, width=180)
 except Exception:
     pass
 
