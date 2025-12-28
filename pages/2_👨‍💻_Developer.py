@@ -38,49 +38,94 @@ if not can_access_page(user['role'], 'Developer'):
     st.error("⛔ Access Denied: Developer privileges required")
     st.stop()
 
-# Display theme-aware logo (automatically switches based on user's theme)
+# Theme toggle and logo display
 try:
     import base64
     
-    def get_logo_base64(logo_path):
-        """Convert logo to base64 for embedding"""
-        try:
-            with open(logo_path, "rb") as f:
-                return base64.b64encode(f.read()).decode()
-        except:
-            return None
+    # Initialize theme in session state if not exists
+    if 'theme' not in st.session_state:
+        st.session_state.theme = 'dark'  # Default to dark theme
     
-    # Load both logo versions
-    light_logo_b64 = get_logo_base64("/mount/src/mind-platform/assets/miva_logo_light.png")
-    dark_logo_b64 = get_logo_base64("/mount/src/mind-platform/assets/miva_logo_dark.png")
+    # Display theme toggle in sidebar
+    with st.sidebar:
+        col1, col2 = st.columns([3, 1])
+        with col2:
+            # Theme toggle button
+            if st.session_state.theme == 'dark':
+                if st.button("☀️", help="Switch to light mode", key="theme_toggle"):
+                    st.session_state.theme = 'light'
+                    st.rerun()
+            else:
+                if st.button("🌙", help="Switch to dark mode", key="theme_toggle"):
+                    st.session_state.theme = 'dark'
+                    st.rerun()
     
-    if light_logo_b64 and dark_logo_b64:
-        # Display both logos with CSS media queries to show/hide based on theme
+    # Select appropriate logo based on theme
+    if st.session_state.theme == 'dark':
+        LOGO_PATH = "/mount/src/mind-platform/assets/miva_logo_light.png"
+    else:
+        LOGO_PATH = "/mount/src/mind-platform/assets/miva_logo_dark.png"
+    
+    # Display logo
+    try:
+        with open(LOGO_PATH, "rb") as f:
+            logo_b64 = base64.b64encode(f.read()).decode()
+        
         st.sidebar.markdown(f"""
-            <style>
-            .logo-container {{ margin-bottom: 1rem; }}
-            .logo-container img {{ width: 180px; display: block; }}
-            
-            /* Show light logo on dark backgrounds (default) */
-            .logo-light {{ display: block; }}
-            .logo-dark {{ display: none; }}
-            
-            /* Show dark logo on light backgrounds */
-            @media (prefers-color-scheme: light) {{
-                .logo-light {{ display: none; }}
-                .logo-dark {{ display: block; }}
-            }}
-            </style>
-            <div class="logo-container">
-                <img src="data:image/png;base64,{light_logo_b64}" class="logo-light" alt="MIVA Logo">
-                <img src="data:image/png;base64,{dark_logo_b64}" class="logo-dark" alt="MIVA Logo">
+            <div style="margin-bottom: 1rem;">
+                <img src="data:image/png;base64,{logo_b64}" width="180" alt="MIVA Logo">
             </div>
         """, unsafe_allow_html=True)
-    elif light_logo_b64:
-        # Fallback to just light logo if dark logo not available
-        st.sidebar.markdown(f"""
-            <img src="data:image/png;base64,{light_logo_b64}" width="180" alt="MIVA Logo">
+    except:
+        pass
+    
+    # Apply theme CSS
+    if st.session_state.theme == 'light':
+        st.markdown("""
+            <style>
+            /* Light theme overrides */
+            :root {
+                --background-color: #ffffff;
+                --secondary-background-color: #f0f2f6;
+                --text-color: #262730;
+            }
+            .stApp {
+                background-color: #ffffff;
+                color: #262730;
+            }
+            .stSidebar {
+                background-color: #f0f2f6;
+            }
+            section[data-testid="stSidebar"] {
+                background-color: #f0f2f6;
+            }
+            .stMarkdown, .stText {
+                color: #262730;
+            }
+            </style>
         """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+            <style>
+            /* Dark theme (default) */
+            :root {
+                --background-color: #0e1117;
+                --secondary-background-color: #262730;
+                --text-color: #fafafa;
+            }
+            .stApp {
+                background-color: #0e1117;
+                color: #fafafa;
+            }
+            .stSidebar {
+                background-color: #262730;
+            }
+            section[data-testid="stSidebar"] {
+                background-color: #262730;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+        
 except Exception:
     pass
 
