@@ -5,6 +5,7 @@ Academic Insights, Student Performance & Learning Analytics
 
 import streamlit as st
 import pandas as pd
+import os
 from datetime import datetime, timedelta
 from google.cloud import bigquery
 from google.oauth2 import service_account
@@ -37,17 +38,17 @@ if not can_access_page(user['role'], 'Faculty'):
     st.error("⛔ Access Denied: Faculty privileges required")
     st.stop()
 
-# Sidebar
-show_user_info_sidebar()
-
-# Display logo if available
+# Display logo at top of sidebar FIRST
 try:
-    # Direct path to logo (confirmed from diagnostics)
     LOGO_PATH = "/mount/src/mind-platform/assets/miva_logo_dark.png"
     if os.path.exists(LOGO_PATH):
         st.sidebar.image(LOGO_PATH, width=180)
 except Exception:
     pass
+
+# Sidebar user info
+show_user_info_sidebar()
+
 
 # Database connection
 @st.cache_resource
