@@ -9,8 +9,8 @@ from config.auth import can_access_page
 
 # Page configuration
 st.set_page_config(
-    page_title="MIND Platform",
-    page_icon="🧠",
+    page_title="MIVA - MIND Platform",
+    page_icon="assets/miva_logo_dark.png",  # Will show in browser tab
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -115,7 +115,7 @@ else:
     show_user_info_sidebar()
     
     # Main content area
-    st.title("🧠 MIND Platform")
+    st.title("MIND Platform")
     st.markdown("### AI-Enhanced Educational Analytics Dashboard")
     
     # Welcome message with role-specific information
