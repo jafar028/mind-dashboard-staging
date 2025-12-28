@@ -205,6 +205,7 @@ def plot_gauge(value, title, max_value=100, height=300):
     if value is None or pd.isna(value):
         value = 0
     
+    # Determine colors based on value
     if value >= 80:
         color = '#2ECC71'
     elif value >= 60:
@@ -212,18 +213,24 @@ def plot_gauge(value, title, max_value=100, height=300):
     else:
         color = '#E74C3C'
     
+    # Theme-aware colors
+    is_light = st.session_state.get('theme') == 'light'
+    text_color = '#262730' if is_light else '#FAFAFA'
+    bg_color = '#F0F0F0' if is_light else '#1E1E1E'
+    border_color = '#262730' if is_light else '#FAFAFA'
+    
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=float(value),
         domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': title, 'font': {'size': 16, 'color': '#FAFAFA'}},
-        number={'font': {'size': 40, 'color': '#FAFAFA'}},
+        title={'text': title, 'font': {'size': 16, 'color': text_color}},
+        number={'font': {'size': 40, 'color': text_color}},
         gauge={
-            'axis': {'range': [0, max_value], 'tickwidth': 1, 'tickcolor': '#FAFAFA'},
+            'axis': {'range': [0, max_value], 'tickwidth': 1, 'tickcolor': text_color},
             'bar': {'color': color, 'thickness': 0.75},
-            'bgcolor': '#1E1E1E',
+            'bgcolor': bg_color,
             'borderwidth': 2,
-            'bordercolor': '#FAFAFA',
+            'bordercolor': border_color,
             'steps': [
                 {'range': [0, 60], 'color': 'rgba(231, 76, 60, 0.3)'},
                 {'range': [60, 80], 'color': 'rgba(243, 156, 18, 0.3)'},
@@ -241,7 +248,7 @@ def plot_gauge(value, title, max_value=100, height=300):
         template=('plotly' if st.session_state.get('theme') == 'light' else 'plotly_dark'), 
         plot_bgcolor=('#ffffff' if st.session_state.get('theme') == 'light' else '#262730'), 
         paper_bgcolor=('#ffffff' if st.session_state.get('theme') == 'light' else '#0E1117'), 
-        font=dict(color=('#262730' if st.session_state.get('theme') == 'light' else '#FAFAFA')), 
+        font=dict(color=text_color), 
         height=height,
         margin=dict(l=20, r=20, t=50, b=20)
     )
