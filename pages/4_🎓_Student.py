@@ -556,8 +556,7 @@ with tabs[1]:
         SELECT 
             g.timestamp,
             c.title as case_study,
-            g.final_score,
-            g.attempt
+            g.final_score
         FROM `{DATASET_ID}.grades` g
         JOIN `{DATASET_ID}.casestudy` c ON g.case_study = c.case_study_id
         WHERE g.user = '{student_user_id}' 
@@ -729,7 +728,6 @@ with tabs[3]:
         SELECT 
             g.timestamp,
             c.title as case_study,
-            g.attempt,
             g.final_score,
             g.performance_summary
         FROM `{DATASET_ID}.grades` g
