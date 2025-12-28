@@ -38,11 +38,49 @@ if not can_access_page(user['role'], 'Faculty'):
     st.error("⛔ Access Denied: Faculty privileges required")
     st.stop()
 
-# Display logo at top of sidebar FIRST
+# Display theme-aware logo (automatically switches based on user's theme)
 try:
-    LOGO_PATH = "/mount/src/mind-platform/assets/miva_logo_dark.png"
-    if os.path.exists(LOGO_PATH):
-        st.sidebar.image(LOGO_PATH, width=180)
+    import base64
+    
+    def get_logo_base64(logo_path):
+        """Convert logo to base64 for embedding"""
+        try:
+            with open(logo_path, "rb") as f:
+                return base64.b64encode(f.read()).decode()
+        except:
+            return None
+    
+    # Load both logo versions
+    light_logo_b64 = get_logo_base64("/mount/src/mind-platform/assets/miva_logo_light.png")
+    dark_logo_b64 = get_logo_base64("/mount/src/mind-platform/assets/miva_logo_dark.png")
+    
+    if light_logo_b64 and dark_logo_b64:
+        # Display both logos with CSS media queries to show/hide based on theme
+        st.sidebar.markdown(f"""
+            <style>
+            .logo-container {{ margin-bottom: 1rem; }}
+            .logo-container img {{ width: 180px; display: block; }}
+            
+            /* Show light logo on dark backgrounds (default) */
+            .logo-light {{ display: block; }}
+            .logo-dark {{ display: none; }}
+            
+            /* Show dark logo on light backgrounds */
+            @media (prefers-color-scheme: light) {{
+                .logo-light {{ display: none; }}
+                .logo-dark {{ display: block; }}
+            }}
+            </style>
+            <div class="logo-container">
+                <img src="data:image/png;base64,{light_logo_b64}" class="logo-light" alt="MIVA Logo">
+                <img src="data:image/png;base64,{dark_logo_b64}" class="logo-dark" alt="MIVA Logo">
+            </div>
+        """, unsafe_allow_html=True)
+    elif light_logo_b64:
+        # Fallback to just light logo if dark logo not available
+        st.sidebar.markdown(f"""
+            <img src="data:image/png;base64,{light_logo_b64}" width="180" alt="MIVA Logo">
+        """, unsafe_allow_html=True)
 except Exception:
     pass
 
