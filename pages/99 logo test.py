@@ -1,118 +1,77 @@
 """
-Logo Diagnostic Page
-Temporary debugging page to test logo display
+Minimal Logo Test Dashboard
 """
 
 import streamlit as st
-import sys
-from pathlib import Path
 import os
 
-# Add parent to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+st.set_page_config(page_title="Logo Test Simple", page_icon="🖼️", layout="wide")
 
-st.set_page_config(page_title="Logo Test", page_icon="🔍", layout="wide")
+st.title("🖼️ Simple Logo Test")
 
-st.title("🔍 Logo Display Diagnostics")
+# Test 1: Check if file exists
+LOGO_PATH = "/mount/src/mind-platform/assets/miva_logo_dark.png"
+
+st.header("Test 1: File Existence")
+if os.path.exists(LOGO_PATH):
+    st.success(f"✅ File exists at: {LOGO_PATH}")
+    st.write(f"File size: {os.path.getsize(LOGO_PATH):,} bytes")
+else:
+    st.error(f"❌ File not found at: {LOGO_PATH}")
+
 st.markdown("---")
 
-# Test 1: Check current working directory
-st.header("1. Current Working Directory")
-cwd = os.getcwd()
-st.code(cwd)
-st.success(f"✓ Working from: {cwd}")
+# Test 2: Try to display in main area
+st.header("Test 2: Display in Main Area")
+try:
+    st.image(LOGO_PATH, width=300, caption="Logo in main area")
+    st.success("✅ Logo displayed in main area successfully!")
+except Exception as e:
+    st.error(f"❌ Error displaying in main area: {e}")
 
-# Test 2: Check if assets folder exists
-st.header("2. Assets Folder Check")
-possible_asset_paths = [
-    Path(cwd) / "assets",
-    Path(__file__).parent.parent / "assets",
-    Path("assets"),
-    Path("/mount/src/mind-platform/assets"),
-    Path("/app/assets"),
+st.markdown("---")
+
+# Test 3: Try to display in sidebar
+st.header("Test 3: Display in Sidebar")
+try:
+    st.sidebar.image(LOGO_PATH, width=180)
+    st.success("✅ Check the sidebar - logo should be visible there!")
+except Exception as e:
+    st.error(f"❌ Error displaying in sidebar: {e}")
+
+st.markdown("---")
+
+# Test 4: Alternative paths
+st.header("Test 4: Try Alternative Paths")
+
+alternative_paths = [
+    "assets/miva_logo_dark.png",
+    "./assets/miva_logo_dark.png",
+    "/mount/src/mind-platform/assets/miva_logo_dark.png",
 ]
 
-for asset_path in possible_asset_paths:
-    exists = asset_path.exists()
-    if exists:
-        st.success(f"✓ FOUND: {asset_path}")
-        # List contents
+for path in alternative_paths:
+    if os.path.exists(path):
+        st.success(f"✅ Found at: {path}")
         try:
-            contents = list(asset_path.iterdir())
-            st.write(f"   Contents: {[f.name for f in contents]}")
+            st.image(path, width=200, caption=f"Using: {path}")
         except Exception as e:
-            st.write(f"   Could not list contents: {e}")
+            st.error(f"Error displaying: {e}")
     else:
-        st.warning(f"✗ Not found: {asset_path}")
-
-# Test 3: Look for logo files specifically
-st.header("3. Logo Files Search")
-logo_names = ["miva_logo_dark.png", "miva_logo_light.png"]
-
-for logo_name in logo_names:
-    st.subheader(f"Looking for: {logo_name}")
-    found = False
-    
-    for asset_path in possible_asset_paths:
-        logo_path = asset_path / logo_name
-        if logo_path.exists():
-            st.success(f"✓ FOUND: {logo_path}")
-            st.write(f"   File size: {logo_path.stat().st_size} bytes")
-            found = True
-            
-            # Try to display it
-            try:
-                st.image(str(logo_path), width=200, caption=f"Successfully loaded: {logo_name}")
-            except Exception as e:
-                st.error(f"   Error displaying: {e}")
-    
-    if not found:
-        st.error(f"✗ {logo_name} NOT FOUND in any location")
-
-# Test 4: Try logo handler
-st.header("4. Logo Handler Test")
-try:
-    from utils.logo_handler import display_logo, get_logo_path
-    st.success("✓ Logo handler imported successfully")
-    
-    # Get path
-    logo_path = get_logo_path(dark_mode=True)
-    if logo_path:
-        st.success(f"✓ Logo path resolved: {logo_path}")
-        st.write(f"   File exists: {os.path.exists(logo_path)}")
-    else:
-        st.error("✗ Logo path is None - logo not found by handler")
-    
-    # Try to display
-    st.subheader("Attempting to display logo via handler:")
-    display_logo("main", width=200)
-    
-except Exception as e:
-    st.error(f"✗ Error with logo handler: {e}")
-    import traceback
-    st.code(traceback.format_exc())
-
-# Test 5: Python path
-st.header("5. Python Path")
-st.write("sys.path entries:")
-for i, path in enumerate(sys.path):
-    st.code(f"{i}: {path}")
-
-# Test 6: File structure
-st.header("6. Repository Structure")
-try:
-    repo_root = Path(__file__).parent.parent
-    st.write(f"Repository root: {repo_root}")
-    
-    # List top-level directories
-    st.write("Top-level contents:")
-    for item in sorted(repo_root.iterdir()):
-        if item.is_dir():
-            st.write(f"📁 {item.name}/")
-        else:
-            st.write(f"📄 {item.name}")
-except Exception as e:
-    st.error(f"Error exploring structure: {e}")
+        st.warning(f"❌ Not found: {path}")
 
 st.markdown("---")
-st.info("💡 **Instructions:** Once you see where the logo files are (or aren't), you can fix the path in logo_handler.py")
+
+# Show actual sidebar code
+st.header("Sidebar Code Test")
+st.code("""
+# This is the code in your sidebar:
+try:
+    LOGO_PATH = "/mount/src/mind-platform/assets/miva_logo_dark.png"
+    if os.path.exists(LOGO_PATH):
+        st.sidebar.image(LOGO_PATH, width=180)
+except Exception as e:
+    st.sidebar.error(f"Logo error: {e}")
+""")
+
+st.info("👈 **Look at the sidebar** - do you see the MIVA logo there?")
