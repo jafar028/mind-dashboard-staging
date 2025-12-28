@@ -102,6 +102,21 @@ try:
             .stMarkdown, .stText {
                 color: #262730;
             }
+            /* Chart/Plot containers - white backgrounds */
+            div[data-testid="stPlotlyChart"] {
+                background-color: #ffffff !important;
+            }
+            .js-plotly-plot {
+                background-color: #ffffff !important;
+            }
+            /* Metric containers */
+            div[data-testid="stMetric"] {
+                background-color: #ffffff;
+            }
+            /* Dataframe containers */
+            div[data-testid="stDataFrame"] {
+                background-color: #ffffff;
+            }
             </style>
         """, unsafe_allow_html=True)
     else:
@@ -167,13 +182,13 @@ DATASET_ID = "gen-lang-client-0625543859.mind_analytics"
 
 # Chart helper functions
 def plot_bar_chart(df, x, y, title, orientation='v', height=400):
-    fig = px.bar(df, x=x, y=y, title=title, template='plotly_dark', orientation=orientation, height=height)
-    fig.update_layout(plot_bgcolor='#262730', paper_bgcolor='#0E1117', font=dict(color='#FAFAFA'))
+    fig = px.bar(df, x=x, y=y, title=title, template=('plotly' if st.session_state.get('theme') == 'light' else 'plotly_dark'), orientation=orientation, height=height)
+    fig.update_layout(plot_bgcolor=('#ffffff' if st.session_state.get('theme') == 'light' else '#262730'), paper_bgcolor=('#ffffff' if st.session_state.get('theme') == 'light' else '#0E1117'), font=dict(color=('#262730' if st.session_state.get('theme') == 'light' else '#FAFAFA')))
     return fig
 
 def plot_line_chart(df, x, y, title, height=400):
-    fig = px.line(df, x=x, y=y, title=title, template='plotly_dark', height=height)
-    fig.update_layout(plot_bgcolor='#262730', paper_bgcolor='#0E1117', font=dict(color='#FAFAFA'), hovermode='x unified')
+    fig = px.line(df, x=x, y=y, title=title, template=('plotly' if st.session_state.get('theme') == 'light' else 'plotly_dark'), height=height)
+    fig.update_layout(plot_bgcolor=('#ffffff' if st.session_state.get('theme') == 'light' else '#262730'), paper_bgcolor=('#ffffff' if st.session_state.get('theme') == 'light' else '#0E1117'), font=dict(color=('#262730' if st.session_state.get('theme') == 'light' else '#FAFAFA')), hovermode='x unified')
     return fig
 
 def create_multi_line_chart(df, x, y_columns, title, height=400):
@@ -182,8 +197,8 @@ def create_multi_line_chart(df, x, y_columns, title, height=400):
     for idx, col in enumerate(y_columns):
         fig.add_trace(go.Scatter(x=df[x], y=df[col], name=col, mode='lines+markers', 
                                 line=dict(color=colors[idx % len(colors)])))
-    fig.update_layout(title=title, template='plotly_dark', plot_bgcolor='#262730', 
-                     paper_bgcolor='#0E1117', font=dict(color='#FAFAFA'), 
+    fig.update_layout(title=title, template=('plotly' if st.session_state.get('theme') == 'light' else 'plotly_dark'), plot_bgcolor=('#ffffff' if st.session_state.get('theme') == 'light' else '#262730'), 
+                     paper_bgcolor=('#ffffff' if st.session_state.get('theme') == 'light' else '#0E1117'), font=dict(color=('#262730' if st.session_state.get('theme') == 'light' else '#FAFAFA')), 
                      hovermode='x unified', height=height)
     return fig
 
@@ -428,10 +443,10 @@ with tabs[0]:
                 title='Hourly Error Rate %',
                 xaxis_title='Time',
                 yaxis_title='Error Rate (%)',
-                template='plotly_dark',
-                plot_bgcolor='#262730',
-                paper_bgcolor='#0E1117',
-                font=dict(color='#FAFAFA'),
+                template=('plotly' if st.session_state.get('theme') == 'light' else 'plotly_dark'),
+                plot_bgcolor=('#ffffff' if st.session_state.get('theme') == 'light' else '#262730'),
+                paper_bgcolor=('#ffffff' if st.session_state.get('theme') == 'light' else '#0E1117'),
+                font=dict(color=('#262730' if st.session_state.get('theme') == 'light' else '#FAFAFA')),
                 height=350,
                 hovermode='x unified'
             )
@@ -469,10 +484,10 @@ with tabs[0]:
                 title='Top HTTP Status Codes',
                 xaxis_title='Count',
                 yaxis_title='Status Code',
-                template='plotly_dark',
-                plot_bgcolor='#262730',
-                paper_bgcolor='#0E1117',
-                font=dict(color='#FAFAFA'),
+                template=('plotly' if st.session_state.get('theme') == 'light' else 'plotly_dark'),
+                plot_bgcolor=('#ffffff' if st.session_state.get('theme') == 'light' else '#262730'),
+                paper_bgcolor=('#ffffff' if st.session_state.get('theme') == 'light' else '#0E1117'),
+                font=dict(color=('#262730' if st.session_state.get('theme') == 'light' else '#FAFAFA')),
                 height=350,
                 yaxis={'categoryorder': 'total ascending'}
             )
@@ -546,10 +561,10 @@ with tabs[0]:
                     overlaying='y',
                     side='right'
                 ),
-                template='plotly_dark',
-                plot_bgcolor='#262730',
-                paper_bgcolor='#0E1117',
-                font=dict(color='#FAFAFA'),
+                template=('plotly' if st.session_state.get('theme') == 'light' else 'plotly_dark'),
+                plot_bgcolor=('#ffffff' if st.session_state.get('theme') == 'light' else '#262730'),
+                paper_bgcolor=('#ffffff' if st.session_state.get('theme') == 'light' else '#0E1117'),
+                font=dict(color=('#262730' if st.session_state.get('theme') == 'light' else '#FAFAFA')),
                 height=350,
                 hovermode='x unified'
             )
@@ -676,10 +691,10 @@ with tabs[2]:
                 title='Top Routes by Request Count',
                 xaxis_title='Request Count',
                 yaxis_title='Route',
-                template='plotly_dark',
-                plot_bgcolor='#262730',
-                paper_bgcolor='#0E1117',
-                font=dict(color='#FAFAFA'),
+                template=('plotly' if st.session_state.get('theme') == 'light' else 'plotly_dark'),
+                plot_bgcolor=('#ffffff' if st.session_state.get('theme') == 'light' else '#262730'),
+                paper_bgcolor=('#ffffff' if st.session_state.get('theme') == 'light' else '#0E1117'),
+                font=dict(color=('#262730' if st.session_state.get('theme') == 'light' else '#FAFAFA')),
                 height=400,
                 yaxis={'categoryorder': 'total ascending'}
             )
@@ -704,10 +719,10 @@ with tabs[2]:
                 title='P95 Latency by Route',
                 xaxis_title='Latency (ms)',
                 yaxis_title='Route',
-                template='plotly_dark',
-                plot_bgcolor='#262730',
-                paper_bgcolor='#0E1117',
-                font=dict(color='#FAFAFA'),
+                template=('plotly' if st.session_state.get('theme') == 'light' else 'plotly_dark'),
+                plot_bgcolor=('#ffffff' if st.session_state.get('theme') == 'light' else '#262730'),
+                paper_bgcolor=('#ffffff' if st.session_state.get('theme') == 'light' else '#0E1117'),
+                font=dict(color=('#262730' if st.session_state.get('theme') == 'light' else '#FAFAFA')),
                 height=400,
                 yaxis={'categoryorder': 'total ascending'}
             )
