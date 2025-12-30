@@ -51,9 +51,9 @@ class QueryBuilder:
         return f"""
         SELECT 
             ROUND(AVG(final_score), 2) as avg_grade,
-            ROUND(AVG(communication), 2) as avg_communication,
-            ROUND(AVG(comprehension), 2) as avg_comprehension,
-            ROUND(AVG(critical_thinking), 2) as avg_critical_thinking
+            ROUND(AVG(individual_scores.communication), 2) as avg_communication,
+            ROUND(AVG(individual_scores.comprehension), 2) as avg_comprehension,
+            ROUND(AVG(individual_scores.critical_thinking), 2) as avg_critical_thinking
         FROM `{DATASET_ID}.grades`
         WHERE final_score IS NOT NULL
         """
