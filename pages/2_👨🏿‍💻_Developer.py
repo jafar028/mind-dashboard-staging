@@ -5,10 +5,7 @@ AI Performance, API Analytics & System Debugging
 
 import streamlit as st
 import pandas as pd
-import os
-from datetime import datetime, timedelta
-from google.cloud import bigquery
-from google.oauth2 import service_account
+from datetime import datetime, timedelta, timezone
 import plotly.express as px
 import plotly.graph_objects as go
 
@@ -20,6 +17,18 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 try:
     from utils.auth_handler import require_authentication, show_user_info_sidebar, get_current_user
     from config.auth import can_access_page
+    from utils.bigquery import run_query
+    from utils.posthog_analytics import (
+        fetch_application_logs,
+        fetch_error_distribution_by_type,
+        fetch_error_free_session_rate,
+        fetch_exception_rate_trends,
+        fetch_network_connectivity,
+        fetch_performance_percentiles,
+        fetch_rage_clicks,
+        fetch_users_affected_by_errors,
+        fetch_web_vitals_metrics,
+    )
 except Exception:
     st.error("Import error - please check file structure")
     st.stop()
@@ -148,35 +157,6 @@ except Exception:
 show_user_info_sidebar()
 
 
-# Database connection
-@st.cache_resource
-def get_db_client():
-    """Get BigQuery client"""
-    try:
-        credentials = service_account.Credentials.from_service_account_info(
-            st.secrets["gcp_service_account"]
-        )
-        return bigquery.Client(
-            credentials=credentials,
-            project=st.secrets["gcp_service_account"]["project_id"],
-            location="europe-west3"
-        )
-    except Exception as e:
-        st.error(f"Database connection failed: {str(e)}")
-        return None
-
-@st.cache_data(ttl=3600)
-def run_query(sql):
-    """Execute query with caching"""
-    client = get_db_client()
-    if client is None:
-        return None
-    try:
-        return client.query(sql).to_dataframe()
-    except Exception as e:
-        st.error(f"Query failed: {str(e)}")
-        return None
-
 # Constants
 DATASET_ID = "gen-lang-client-0625543859.mind_analytics"
 
@@ -202,6 +182,21 @@ def create_multi_line_chart(df, x, y_columns, title, height=400):
                      hovermode='x unified', height=height)
     return fig
 
+
+def apply_theme_layout(fig, title, xaxis_title, yaxis_title, height=400):
+    fig.update_layout(
+        title=title,
+        xaxis_title=xaxis_title,
+        yaxis_title=yaxis_title,
+        template=("plotly" if st.session_state.get("theme") == "light" else "plotly_dark"),
+        plot_bgcolor=("#ffffff" if st.session_state.get("theme") == "light" else "#262730"),
+        paper_bgcolor=("#ffffff" if st.session_state.get("theme") == "light" else "#0E1117"),
+        font=dict(color=("#262730" if st.session_state.get("theme") == "light" else "#FAFAFA")),
+        height=height,
+        hovermode="x unified"
+    )
+    return fig
+
 # Header
 st.title("👨🏿‍💻 Developer Dashboard")
 st.markdown("### AI Performance, API Analytics & System Debugging")
@@ -209,28 +204,51 @@ st.markdown("---")
 
 # Filters in sidebar
 with st.sidebar:
+    st.markdown("### 🔍 Filters")
+    today = datetime.now(timezone.utc).date()
+    default_start = today - timedelta(days=30)
+    date_range = st.date_input(
+        "Date range",
+        value=(default_start, today),
+        max_value=today
+    )
+    if isinstance(date_range, tuple) and len(date_range) == 2:
+        start_date, end_date = date_range
+    else:
+        start_date = date_range
+        end_date = date_range
+
+    start_ts = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+    end_ts = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+
+    st.markdown("---")
     st.markdown("### 🔧 Developer Tools")
-    
+
     time_window = st.selectbox(
         "Analysis Window",
         ["Last Hour", "Last 6 Hours", "Last 24 Hours", "Last 7 Days"],
         index=3
     )
-    
+
     time_map = {
-        "Last Hour": 1/24,
-        "Last 6 Hours": 6/24,
+        "Last Hour": 1 / 24,
+        "Last 6 Hours": 6 / 24,
         "Last 24 Hours": 1,
         "Last 7 Days": 7
     }
     days = time_map[time_window]
-    
+
     st.markdown("---")
     st.markdown("### 🐛 Debug Tools")
-    
+
     trace_id = st.text_input("Enter Trace ID", placeholder="trace-xxx-xxx")
     if st.button("🔍 Lookup Trace") and trace_id:
         st.session_state.trace_lookup = trace_id
+
+posthog_params = {
+    "start_ts": ("TIMESTAMP", start_ts),
+    "end_ts": ("TIMESTAMP", end_ts),
+}
 
 # Main content tabs
 tabs = st.tabs([
@@ -238,7 +256,8 @@ tabs = st.tabs([
     "🤖 AI Performance",
     "⚡ API Analytics",
     "🔍 Trace Debugger",
-    "📡 Telemetry"
+    "📡 Telemetry",
+    "📈 Product Analytics"
 ])
 
 # TAB 1: OVERVIEW
@@ -908,6 +927,409 @@ with tabs[4]:
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("No environment data available")
+
+# TAB 6: PRODUCT ANALYTICS
+with tabs[5]:
+    st.markdown("## 📈 Product Analytics")
+
+    st.markdown("### Reliability / Errors")
+    with st.spinner("Loading exception rate trends..."):
+        df_rates = fetch_exception_rate_trends(posthog_params)
+
+    if df_rates is not None and not df_rates.empty:
+        df_rates["date"] = pd.to_datetime(df_rates["date"])
+        df_rates = df_rates.sort_values("date")
+        for col in ["exception_count", "total_events", "exception_rate_percent", "users_with_errors"]:
+            df_rates[col] = pd.to_numeric(df_rates[col], errors="coerce").fillna(0)
+
+        total_events = int(df_rates["total_events"].sum())
+        total_exceptions = int(df_rates["exception_count"].sum())
+        avg_exception_rate = df_rates["exception_rate_percent"].mean()
+        users_with_errors = int(df_rates["users_with_errors"].sum())
+
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Events", f"{total_events:,}")
+        with col2:
+            st.metric("Exception Count", f"{total_exceptions:,}")
+        with col3:
+            st.metric("Avg Exception Rate", f"{avg_exception_rate:.2f}%")
+        with col4:
+            st.metric("Users With Errors", f"{users_with_errors:,}")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            fig = px.line(
+                df_rates,
+                x="date",
+                y="exception_rate_percent",
+                markers=True,
+                labels={"date": "Date", "exception_rate_percent": "Exception Rate (%)"}
+            )
+            fig = apply_theme_layout(fig, "Exception Rate (%) by Date", "Date", "Exception Rate (%)", height=350)
+            st.plotly_chart(fig, use_container_width=True)
+
+        with col2:
+            fig = px.line(
+                df_rates,
+                x="date",
+                y="exception_count",
+                markers=True,
+                labels={"date": "Date", "exception_count": "Exception Count"}
+            )
+            fig = apply_theme_layout(fig, "Exception Count by Date", "Date", "Exception Count", height=350)
+            st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No data found for the selected period.")
+
+    st.markdown("---")
+    st.markdown("#### Users Affected by Errors")
+    with st.spinner("Loading users affected by errors..."):
+        df_users = fetch_users_affected_by_errors(posthog_params)
+
+    if df_users is not None and not df_users.empty:
+        df_users["exception_count"] = pd.to_numeric(df_users["exception_count"], errors="coerce").fillna(0)
+        df_users["user_email"] = df_users["user_email"].fillna("Unknown")
+        top_users = df_users.sort_values("exception_count", ascending=False).head(20)
+
+        col1, col2 = st.columns([2, 3])
+        with col1:
+            fig = px.bar(
+                top_users,
+                x="exception_count",
+                y="user_email",
+                orientation="h",
+                labels={"exception_count": "Exception Count", "user_email": "User Email"}
+            )
+            fig = apply_theme_layout(fig, "Top 20 Users by Exception Count", "Exception Count", "User Email", height=450)
+            fig.update_layout(yaxis={"categoryorder": "total ascending"})
+            st.plotly_chart(fig, use_container_width=True)
+        with col2:
+            st.dataframe(df_users, use_container_width=True, height=450)
+    else:
+        st.info("No data found for the selected period.")
+
+    st.markdown("---")
+    st.markdown("#### Error Distribution by Type")
+    with st.spinner("Loading error distribution..."):
+        df_errors = fetch_error_distribution_by_type(posthog_params)
+
+    if df_errors is not None and not df_errors.empty:
+        df_errors["occurrence_count"] = pd.to_numeric(df_errors["occurrence_count"], errors="coerce").fillna(0)
+        error_summary = (
+            df_errors.groupby("error_type", dropna=False)["occurrence_count"]
+            .sum()
+            .reset_index()
+        )
+        error_summary["error_type"] = error_summary["error_type"].fillna("Unknown")
+        error_summary = error_summary.sort_values("occurrence_count", ascending=False).head(15)
+
+        col1, col2 = st.columns([2, 3])
+        with col1:
+            fig = px.bar(
+                error_summary,
+                x="occurrence_count",
+                y="error_type",
+                orientation="h",
+                labels={"occurrence_count": "Occurrences", "error_type": "Error Type"}
+            )
+            fig = apply_theme_layout(fig, "Top Error Types", "Occurrences", "Error Type", height=450)
+            fig.update_layout(yaxis={"categoryorder": "total ascending"})
+            st.plotly_chart(fig, use_container_width=True)
+        with col2:
+            st.dataframe(df_errors, use_container_width=True, height=450)
+    else:
+        st.info("No data found for the selected period.")
+
+    st.markdown("---")
+    st.markdown("### Performance / Web Vitals")
+    with st.spinner("Loading web vitals metrics..."):
+        df_vitals = fetch_web_vitals_metrics(posthog_params)
+
+    if df_vitals is not None and not df_vitals.empty:
+        df_vitals["date"] = pd.to_datetime(df_vitals["date"])
+        df_vitals = df_vitals.sort_values("date")
+        numeric_cols = [
+            "avg_lcp_seconds",
+            "avg_fcp_seconds",
+            "avg_inp_ms",
+            "avg_cls_score",
+            "lcp_good",
+            "lcp_needs_improvement",
+            "lcp_poor",
+            "inp_good",
+            "inp_needs_improvement",
+            "inp_poor",
+        ]
+        for col in numeric_cols:
+            if col in df_vitals.columns:
+                df_vitals[col] = pd.to_numeric(df_vitals[col], errors="coerce").fillna(0)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            fig = px.line(
+                df_vitals,
+                x="date",
+                y=["avg_lcp_seconds", "avg_fcp_seconds"],
+                markers=True,
+                labels={
+                    "date": "Date",
+                    "value": "Seconds",
+                    "variable": "Metric"
+                }
+            )
+            fig = apply_theme_layout(fig, "Average LCP & FCP (Seconds)", "Date", "Seconds", height=350)
+            st.plotly_chart(fig, use_container_width=True)
+
+        with col2:
+            fig = px.line(
+                df_vitals,
+                x="date",
+                y=["avg_inp_ms", "avg_cls_score"],
+                markers=True,
+                labels={
+                    "date": "Date",
+                    "value": "Value",
+                    "variable": "Metric"
+                }
+            )
+            fig = apply_theme_layout(fig, "Average INP (ms) & CLS (score)", "Date", "Value", height=350)
+            st.plotly_chart(fig, use_container_width=True)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            lcp_dist = df_vitals.melt(
+                id_vars=["date"],
+                value_vars=["lcp_good", "lcp_needs_improvement", "lcp_poor"],
+                var_name="bucket",
+                value_name="count"
+            )
+            lcp_dist["bucket"] = lcp_dist["bucket"].str.replace("_", " ").str.title()
+            fig = px.bar(
+                lcp_dist,
+                x="date",
+                y="count",
+                color="bucket",
+                barmode="stack",
+                labels={"date": "Date", "count": "Events", "bucket": "LCP Bucket"}
+            )
+            fig = apply_theme_layout(fig, "LCP Distribution by Date", "Date", "Events", height=350)
+            st.plotly_chart(fig, use_container_width=True)
+
+        with col2:
+            inp_dist = df_vitals.melt(
+                id_vars=["date"],
+                value_vars=["inp_good", "inp_needs_improvement", "inp_poor"],
+                var_name="bucket",
+                value_name="count"
+            )
+            inp_dist["bucket"] = inp_dist["bucket"].str.replace("_", " ").str.title()
+            fig = px.bar(
+                inp_dist,
+                x="date",
+                y="count",
+                color="bucket",
+                barmode="stack",
+                labels={"date": "Date", "count": "Events", "bucket": "INP Bucket"}
+            )
+            fig = apply_theme_layout(fig, "INP Distribution by Date", "Date", "Events", height=350)
+            st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No data found for the selected period.")
+
+    st.markdown("#### Performance Percentiles")
+    with st.spinner("Loading performance percentiles..."):
+        df_percentiles = fetch_performance_percentiles(posthog_params)
+
+    if df_percentiles is not None and not df_percentiles.empty:
+        col1, col2 = st.columns([2, 3])
+        with col1:
+            fig = px.bar(
+                df_percentiles,
+                x="metric_name",
+                y="p95",
+                labels={"metric_name": "Metric", "p95": "P95"}
+            )
+            fig = apply_theme_layout(fig, "P95 by Metric", "Metric", "P95", height=350)
+            st.plotly_chart(fig, use_container_width=True)
+        with col2:
+            st.dataframe(df_percentiles, use_container_width=True, height=350)
+    else:
+        st.info("No data found for the selected period.")
+
+    st.markdown("---")
+    st.markdown("### Sessions Quality")
+    with st.spinner("Loading error-free session rate..."):
+        df_sessions = fetch_error_free_session_rate(posthog_params)
+
+    if df_sessions is not None and not df_sessions.empty:
+        row = df_sessions.iloc[0]
+        total_sessions = int(row.get("total_sessions", 0))
+        sessions_with_errors = int(row.get("sessions_with_errors", 0))
+        error_free_sessions = int(row.get("error_free_sessions", 0))
+        error_free_rate = float(row.get("error_free_rate_percent", 0))
+
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Error-Free Rate", f"{error_free_rate:.2f}%")
+        with col2:
+            st.metric("Total Sessions", f"{total_sessions:,}")
+        with col3:
+            st.metric("Sessions With Errors", f"{sessions_with_errors:,}")
+        with col4:
+            st.metric("Error-Free Sessions", f"{error_free_sessions:,}")
+
+        fig = px.pie(
+            names=["Error-Free", "With Errors"],
+            values=[error_free_sessions, sessions_with_errors],
+            hole=0.5
+        )
+        fig = apply_theme_layout(fig, "Session Error Split", "Session Type", "Sessions", height=350)
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No data found for the selected period.")
+
+    st.markdown("---")
+    st.markdown("### UX Frustration")
+    with st.spinner("Loading rage clicks..."):
+        df_rage = fetch_rage_clicks(posthog_params)
+
+    if df_rage is not None and not df_rage.empty:
+        df_rage["date"] = pd.to_datetime(df_rage["date"])
+        df_rage["rageclick_count"] = pd.to_numeric(df_rage["rageclick_count"], errors="coerce").fillna(0)
+
+        col1, col2 = st.columns([2, 3])
+        with col1:
+            top_pages = (
+                df_rage.groupby("page_url")["rageclick_count"]
+                .sum()
+                .reset_index()
+                .sort_values("rageclick_count", ascending=False)
+                .head(20)
+            )
+            fig = px.bar(
+                top_pages,
+                x="rageclick_count",
+                y="page_url",
+                orientation="h",
+                labels={"rageclick_count": "Rage Clicks", "page_url": "Page URL"}
+            )
+            fig = apply_theme_layout(fig, "Top 20 Pages by Rage Clicks", "Rage Clicks", "Page URL", height=450)
+            fig.update_layout(yaxis={"categoryorder": "total ascending"})
+            st.plotly_chart(fig, use_container_width=True)
+
+        with col2:
+            st.dataframe(
+                df_rage.sort_values("rageclick_count", ascending=False),
+                use_container_width=True,
+                height=450
+            )
+
+        rage_daily = (
+            df_rage.groupby("date")["rageclick_count"]
+            .sum()
+            .reset_index()
+            .sort_values("date")
+        )
+        fig = px.line(
+            rage_daily,
+            x="date",
+            y="rageclick_count",
+            markers=True,
+            labels={"date": "Date", "rageclick_count": "Rage Clicks"}
+        )
+        fig = apply_theme_layout(fig, "Daily Rage Clicks", "Date", "Rage Clicks", height=300)
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No data found for the selected period.")
+
+    st.markdown("---")
+    st.markdown("### Network")
+    with st.spinner("Loading network connectivity issues..."):
+        df_network = fetch_network_connectivity(posthog_params)
+
+    if df_network is not None and not df_network.empty:
+        df_network["date"] = pd.to_datetime(df_network["date"])
+        df_network["status_change_count"] = pd.to_numeric(
+            df_network["status_change_count"], errors="coerce"
+        ).fillna(0)
+
+        status_trend = (
+            df_network.groupby(["date", "network_status"])["status_change_count"]
+            .sum()
+            .reset_index()
+            .sort_values("date")
+        )
+        fig = px.bar(
+            status_trend,
+            x="date",
+            y="status_change_count",
+            color="network_status",
+            barmode="stack",
+            labels={
+                "date": "Date",
+                "status_change_count": "Status Changes",
+                "network_status": "Network Status"
+            }
+        )
+        fig = apply_theme_layout(fig, "Network Status Changes by Date", "Date", "Status Changes", height=350)
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.dataframe(
+            df_network.sort_values(["date", "status_change_count"], ascending=[True, False]),
+            use_container_width=True,
+            height=350
+        )
+    else:
+        st.info("No data found for the selected period.")
+
+    st.markdown("---")
+    st.markdown("### Logs")
+    with st.spinner("Loading application logs..."):
+        df_logs = fetch_application_logs(posthog_params)
+
+    if df_logs is not None and not df_logs.empty:
+        df_logs["date"] = pd.to_datetime(df_logs["date"])
+        df_logs["log_count"] = pd.to_numeric(df_logs["log_count"], errors="coerce").fillna(0)
+
+        log_level_summary = (
+            df_logs.groupby("log_level")["log_count"]
+            .sum()
+            .reset_index()
+            .sort_values("log_count", ascending=False)
+        )
+        fig = px.bar(
+            log_level_summary,
+            x="log_level",
+            y="log_count",
+            labels={"log_level": "Log Level", "log_count": "Log Count"}
+        )
+        fig = apply_theme_layout(fig, "Log Count by Level", "Log Level", "Log Count", height=350)
+        st.plotly_chart(fig, use_container_width=True)
+
+        log_trend = (
+            df_logs.groupby("date")["log_count"]
+            .sum()
+            .reset_index()
+            .sort_values("date")
+        )
+        fig = px.line(
+            log_trend,
+            x="date",
+            y="log_count",
+            markers=True,
+            labels={"date": "Date", "log_count": "Log Count"}
+        )
+        fig = apply_theme_layout(fig, "Daily Log Volume", "Date", "Log Count", height=300)
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.dataframe(
+            df_logs.sort_values(["date", "log_count"], ascending=[True, False]),
+            use_container_width=True,
+            height=400
+        )
+    else:
+        st.info("No data found for the selected period.")
 
 # Footer
 st.markdown("---")

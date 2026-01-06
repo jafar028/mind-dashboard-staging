@@ -313,3 +313,22 @@ class QueryBuilder:
         GROUP BY u.department
         ORDER BY u.department
         """
+
+    def get_cohort_performance(cohort: str = None) -> str:
+        """Get performance by cohort"""
+        cohort_filter = f"AND u.cohort = '{cohort}'" if cohort else ""
+        return f"""
+        SELECT 
+            u.cohort,
+            COUNT(DISTINCT u.user_id) as total_students,
+            COUNT(DISTINCT g.conversation_id) as total_attempts,
+            ROUND(AVG(g.final_score), 2) as avg_score,
+            ROUND(AVG(g.communication), 2) as avg_communication,
+            ROUND(AVG(g.comprehension), 2) as avg_comprehension,
+            ROUND(AVG(g.critical_thinking), 2) as avg_critical_thinking
+        FROM `{DATASET_ID}.user` u
+        LEFT JOIN `{DATASET_ID}.grades` g ON u.user_id = g.user_id
+        WHERE u.cohort IS NOT NULL {cohort_filter}
+        GROUP BY u.cohort
+        ORDER BY u.cohort
+        """
